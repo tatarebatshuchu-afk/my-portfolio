@@ -38,7 +38,7 @@
     <h2>Редактирование сайта ⚡</h2>
     
     <label>GitHub Токен (для сохранения):</label>
-    <input type="password" id="gh-token" placeholder="ghp_xxxxxxxxxxxx">
+    <input type="password" id="gh-token" value="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" placeholder="github_pat_xxxxxxxxxxxx">
 
     <label>Текст «О себе»:</label>
     <textarea id="edit-about" rows="3"></textarea>
@@ -57,8 +57,8 @@
 
   <script>
     let repoSHA = '';
-    const REPO_OWNER = 'tatarebatshuchu-afk'; // 👈 Измени на свой ник
-    const REPO_NAME = 'my-portfolio';  // 👈 Измени на имя репозитория
+    const REPO_OWNER = 'tatarebatshuchu-afk';
+    const REPO_NAME = 'my-portfolio';
 
     async function hashString(str) {
       const buffer = new TextEncoder().encode(str);
@@ -107,17 +107,13 @@
     }
 
     async function saveToGitHub() {
-      const token = document.getElementById('gh-token').value.trim();
+      const inputToken = document.getElementById('gh-token').value.trim();
+      const token = inputToken || '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';
       const statusMsg = document.getElementById('status-msg');
-      if (!token) {
-        alert('Введите GitHub Token!');
-        return;
-      }
 
       statusMsg.style.display = 'block';
       statusMsg.innerText = 'Сохранение...';
 
-      // Собираем данные из полей
       const updatedData = {
         aboutText: document.getElementById('edit-about').value,
         interests: document.getElementById('edit-interests').value.split(',').map(s => s.trim()).filter(Boolean),
@@ -133,14 +129,12 @@
       });
 
       try {
-        // 1. Получаем SHA текущего файла data.json
         const getFile = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/data.json`, {
           headers: { 'Authorization': `token ${token}` }
         });
         const fileData = await getFile.json();
         const sha = fileData.sha;
 
-        // 2. Пушим обновленные данные в data.json на GitHub
         const contentEncoded = btoa(unescape(encodeURIComponent(JSON.stringify(updatedData, null, 2))));
         const updateRes = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/data.json`, {
           method: 'PUT',
