@@ -3,85 +3,166 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <meta http-equiv="Pragma" content="no-cache">
-  <meta http-equiv="Expires" content="0">
   <title>Админ-панель</title>
   <style>
-    * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-    body { background: #0f172a; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
-    .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 30px; width: 340px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); text-align: center; }
-    h2 { margin-top: 0; color: #38bdf8; }
-    input { width: 100%; padding: 12px; margin: 8px 0; border-radius: 6px; border: 1px solid #475569; background: #0f172a; color: #fff; font-size: 14px; outline: none; }
-    input:focus { border-color: #38bdf8; }
-    button { width: 100%; padding: 12px; background: #0284c7; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; color: #fff; font-size: 14px; margin-top: 10px; transition: 0.2s; }
+    * { box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
+    body { background: #0f172a; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 25px; width: 100%; max-width: 500px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+    h2, h3 { color: #38bdf8; margin-top: 0; }
+    input, textarea { width: 100%; padding: 10px; margin: 6px 0 12px 0; border-radius: 6px; border: 1px solid #475569; background: #0f172a; color: #fff; font-size: 14px; }
+    button { width: 100%; padding: 12px; background: #0284c7; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; color: #fff; margin-top: 10px; }
     button:hover { background: #0369a1; }
-    .btn-logout { background: #ef4444; }
+    .btn-logout { background: #ef4444; margin-top: 20px; }
     .btn-logout:hover { background: #dc2626; }
+    .btn-add { background: #10b981; padding: 8px; font-size: 12px; }
+    .btn-add:hover { background: #059669; }
     #admin-panel { display: none; }
-    .error { color: #f87171; margin-top: 12px; font-size: 13px; display: none; }
-    a { color: #38bdf8; text-decoration: none; font-size: 13px; display: inline-block; margin-top: 15px; }
+    .error { color: #f87171; font-size: 13px; display: none; margin-top: 10px; }
+    .project-row { display: flex; gap: 8px; margin-bottom: 8px; }
+    .project-row input { margin: 0; }
   </style>
 </head>
 <body>
 
-  <!-- Форма входа -->
+  <!-- Авторизация -->
   <div class="card" id="login-box">
-    <h2>Вход в систему</h2>
-    <input type="text" id="login" placeholder="Логин" autocomplete="off">
+    <h2>Вход в панель</h2>
+    <input type="text" id="login" placeholder="Логин">
     <input type="password" id="password" placeholder="Пароль">
     <button onclick="checkAuth()">Войти</button>
     <div id="error-msg" class="error">Неверный логин или пароль!</div>
-    <a href="../">← На главную</a>
   </div>
 
-  <!-- Панель управления -->
+  <!-- Админка -->
   <div class="card" id="admin-panel">
-    <h2>Панель управления ⚡</h2>
-    <p>Доступ подтвержден. Вы вошли как Администратор.</p>
+    <h2>Редактирование сайта ⚡</h2>
+    
+    <label>GitHub Токен (для сохранения):</label>
+    <input type="password" id="gh-token" placeholder="ghp_xxxxxxxxxxxx">
+
+    <label>Текст «О себе»:</label>
+    <textarea id="edit-about" rows="3"></textarea>
+
+    <label>Интересы (через запятую):</label>
+    <input type="text" id="edit-interests" placeholder="Python, Linux, HTML">
+
+    <h3>Проекты</h3>
+    <div id="projects-container"></div>
+    <button type="button" class="btn-add" onclick="addProjectRow()">+ Добавить проект</button>
+
+    <button onclick="saveToGitHub()">Сохранить изменения на GitHub</button>
     <button class="btn-logout" onclick="logout()">Выйти</button>
+    <div id="status-msg" class="error" style="color:#38bdf8;"></div>
   </div>
 
   <script>
+    let repoSHA = '';
+    const REPO_OWNER = 'tatarebatshuchu-afk'; // 👈 Измени на свой ник
+    const REPO_NAME = 'my-portfolio';  // 👈 Измени на имя репозитория
+
     async function hashString(str) {
       const buffer = new TextEncoder().encode(str);
       const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
       return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
     }
 
-    async function fetchConfigNoCache() {
-      // Добавляем уникальный параметр времени, чтобы обойти кэш браузера и CDN
-      const cacheBuster = '?t=' + new Date().getTime();
-      const response = await fetch('./config.json' + cacheBuster, {
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache'
-        }
-      });
-      if (!response.ok) throw new Error('Ошибка загрузки');
-      return await response.json();
-    }
-
     async function checkAuth() {
       const loginVal = document.getElementById('login').value.trim();
       const passVal = document.getElementById('password').value;
-      const errorMsg = document.getElementById('error-msg');
+      const res = await fetch('./config.json?t=' + Date.now());
+      const config = await res.json();
+      const inputPassHash = await hashString(passVal);
+
+      if (loginVal === config.login && inputPassHash === config.passHash) {
+        document.getElementById('login-box').style.display = 'none';
+        document.getElementById('admin-panel').style.display = 'block';
+        sessionStorage.setItem('isAdmin', 'true');
+        loadCurrentData();
+      } else {
+        document.getElementById('error-msg').style.display = 'block';
+      }
+    }
+
+    async function loadCurrentData() {
+      const res = await fetch('../data.json?t=' + Date.now());
+      const data = await res.json();
+
+      document.getElementById('edit-about').value = data.aboutText;
+      document.getElementById('edit-interests').value = data.interests.join(', ');
+
+      const container = document.getElementById('projects-container');
+      container.innerHTML = '';
+      data.projects.forEach(p => addProjectRow(p.name, p.url));
+    }
+
+    function addProjectRow(name = '', url = '') {
+      const container = document.getElementById('projects-container');
+      const div = document.createElement('div');
+      div.className = 'project-row';
+      div.innerHTML = `
+        <input type="text" placeholder="Название" value="${name}" class="p-name">
+        <input type="text" placeholder="Ссылка (https://...)" value="${url}" class="p-url">
+      `;
+      container.appendChild(div);
+    }
+
+    async function saveToGitHub() {
+      const token = document.getElementById('gh-token').value.trim();
+      const statusMsg = document.getElementById('status-msg');
+      if (!token) {
+        alert('Введите GitHub Token!');
+        return;
+      }
+
+      statusMsg.style.display = 'block';
+      statusMsg.innerText = 'Сохранение...';
+
+      // Собираем данные из полей
+      const updatedData = {
+        aboutText: document.getElementById('edit-about').value,
+        interests: document.getElementById('edit-interests').value.split(',').map(s => s.trim()).filter(Boolean),
+        projects: []
+      };
+
+      const names = document.querySelectorAll('.p-name');
+      const urls = document.querySelectorAll('.p-url');
+      names.forEach((el, index) => {
+        if (el.value.trim()) {
+          updatedData.projects.push({ name: el.value.trim(), url: urls[index].value.trim() });
+        }
+      });
 
       try {
-        const config = await fetchConfigNoCache();
-        const inputPassHash = await hashString(passVal);
+        // 1. Получаем SHA текущего файла data.json
+        const getFile = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/data.json`, {
+          headers: { 'Authorization': `token ${token}` }
+        });
+        const fileData = await getFile.json();
+        const sha = fileData.sha;
 
-        if (loginVal === config.login && inputPassHash === config.passHash) {
-          document.getElementById('login-box').style.display = 'none';
-          document.getElementById('admin-panel').style.display = 'block';
-          sessionStorage.setItem('isAdmin', 'true');
+        // 2. Пушим обновленные данные в data.json на GitHub
+        const contentEncoded = btoa(unescape(encodeURIComponent(JSON.stringify(updatedData, null, 2))));
+        const updateRes = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/data.json`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `token ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            message: 'Обновление данных через админ-панель',
+            content: contentEncoded,
+            sha: sha
+          })
+        });
+
+        if (updateRes.ok) {
+          statusMsg.innerText = 'Успешно сохранено на GitHub! Страница обновится через минуту.';
         } else {
-          errorMsg.innerText = "Неверный логин или пароль!";
-          errorMsg.style.display = 'block';
+          statusMsg.innerText = 'Ошибка сохранения. Проверьте токен и права!';
         }
       } catch (err) {
-        errorMsg.innerText = "Ошибка получения конфига со страницы!";
-        errorMsg.style.display = 'block';
+        console.error(err);
+        statusMsg.innerText = 'Ошибка сети или API.';
       }
     }
 
@@ -90,10 +171,10 @@
       location.reload();
     }
 
-    // Сохранение состояния при перезагрузке внутри сессии браузера
     if (sessionStorage.getItem('isAdmin') === 'true') {
       document.getElementById('login-box').style.display = 'none';
       document.getElementById('admin-panel').style.display = 'block';
+      loadCurrentData();
     }
   </script>
 </body>
