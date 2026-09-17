@@ -3,35 +3,64 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Портфолио & Проекты</title>
+  <title>Портфолио</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div class="container">
     <header>
-      <h1>Привет! Я разработчик 👋</h1>
-      <p>Создаю веб-приложения, скрипты и экспериментирую с кодом.</p>
+      <h1>Персональная страница 👋</h1>
+      <p id="about-text">Загрузка...</p>
     </header>
 
     <section class="card">
-      <h2>О себе</h2>
-      <p>Добро пожаловать на мой персональный сайт! Здесь собраны мои проекты и полезные материалы.</p>
+      <h2>Мои интересы и навыки</h2>
+      <ul class="skills" id="interests-list"></ul>
     </section>
 
     <section class="card">
-      <h2>Навыки и Технологии</h2>
-      <ul class="skills">
-        <li>Python (Flask, GUI)</li>
-        <li>JavaScript / HTML / CSS</li>
-        <li>Linux & SysAdmin</li>
-        <li>Git & GitHub</li>
-      </ul>
+      <h2>Проекты</h2>
+      <div id="projects-list"></div>
     </section>
 
     <footer>
-      <p>© 2026 Все права защищены</p>
       <a href="./admin/" class="admin-link">Админка</a>
     </footer>
   </div>
+
+  <script>
+    async function loadData() {
+      try {
+        const response = await fetch('./data.json?t=' + Date.now());
+        const data = await response.json();
+
+        // Заполняем текст
+        document.getElementById('about-text').innerText = data.aboutText;
+
+        // Заполняем интересы
+        const interestsList = document.getElementById('interests-list');
+        interestsList.innerHTML = '';
+        data.interests.forEach(item => {
+          const li = document.createElement('li');
+          li.innerText = item;
+          interestsList.appendChild(li);
+        });
+
+        // Заполняем проекты
+        const projectsList = document.getElementById('projects-list');
+        projectsList.innerHTML = '';
+        data.projects.forEach(p => {
+          const div = document.createElement('div');
+          div.className = 'project-item';
+          div.innerHTML = `<a href="${p.url}" target="_blank"><strong>${p.name}</strong> ↗</a>`;
+          projectsList.appendChild(div);
+        });
+      } catch (e) {
+        console.error("Ошибка загрузки data.json", e);
+      }
+    }
+
+    loadData();
+  </script>
 </body>
 </html>
