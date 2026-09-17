@@ -38,7 +38,7 @@
     <h2>Редактирование сайта ⚡</h2>
     
     <label>GitHub Токен (для сохранения):</label>
-    <input type="password" id="gh-token" value="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" placeholder="github_pat_xxxxxxxxxxxx">
+    <input type="password" id="gh-token" placeholder="github_pat_xxxxxxxxxxxx">
 
     <label>Текст «О себе»:</label>
     <textarea id="edit-about" rows="3"></textarea>
@@ -69,30 +69,46 @@
     async function checkAuth() {
       const loginVal = document.getElementById('login').value.trim();
       const passVal = document.getElementById('password').value;
-      const res = await fetch('./config.json?t=' + Date.now());
-      const config = await res.json();
-      const inputPassHash = await hashString(passVal);
+      
+      try {
+        const res = await fetch('./config.json?t=' + Date.now());
+        const config = await res.json();
+        const inputPassHash = await hashString(passVal);
 
-      if (loginVal === config.login && inputPassHash === config.passHash) {
-        document.getElementById('login-box').style.display = 'none';
-        document.getElementById('admin-panel').style.display = 'block';
-        sessionStorage.setItem('isAdmin', 'true');
-        loadCurrentData();
-      } else {
-        document.getElementById('error-msg').style.display = 'block';
+        if (loginVal === config.login && inputPassHash === config.passHash) {
+          document.getElementById('login-box').style.display = 'none';
+          document.getElementById('admin-panel').style.display = 'block';
+          sessionStorage.setItem('isAdmin', 'true');
+          
+          // Восстанавливаем токен из памяти сессии, если он сохранялся
+          const savedToken = sessionStorage.getItem('gh_token');
+          if (savedToken) document.getElementById('gh-token').value = savedToken;
+          
+          loadCurrentData();
+        } else {
+          document.getElementById('error-msg').style.display = 'block';
+        }
+      } catch (err) {
+        alert('Ошибка загрузки config.json');
       }
     }
 
     async function loadCurrentData() {
-      const res = await fetch('../data.json?t=' + Date.now());
-      const data = await res.json();
+      try {
+        const res = await fetch('../data.json?t=' + Date.now());
+        const data = await res.json();
 
-      document.getElementById('edit-about').value = data.aboutText;
-      document.getElementById('edit-interests').value = data.interests.join(', ');
+        document.getElementById('edit-about').value = data.aboutText || '';
+        document.getElementById('edit-interests').value = (data.interests || []).join(', ');
 
-      const container = document.getElementById('projects-container');
-      container.innerHTML = '';
-      data.projects.forEach(p => addProjectRow(p.name, p.url));
+        const container = document.getElementById('projects-container');
+        container.innerHTML = '';
+        if (data.projects) {
+          data.projects.forEach(p => addProjectRow(p.name, p.url));
+        }
+      } catch (err) {
+        console.error('Ошибка загрузки data.json', err);
+      }
     }
 
     function addProjectRow(name = '', url = '') {
@@ -107,10 +123,15 @@
     }
 
     async function saveToGitHub() {
-      const inputToken = document.getElementById('gh-token').value.trim();
-      const token = inputToken || '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';
+      const token = document.getElementById('gh-token').value.trim();
       const statusMsg = document.getElementById('status-msg');
 
+      if (!token) {
+        alert('Введите GitHub Token!');
+        return;
+      }
+
+      sessionStorage.setItem('gh_token', token);
       statusMsg.style.display = 'block';
       statusMsg.innerText = 'Сохранение...';
 
@@ -129,18 +150,30 @@
       });
 
       try {
+        // 1. Запрос SHA файла с заголовком Bearer
         const getFile = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/data.json`, {
-          headers: { 'Authorization': `token ${token}` }
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/vnd.github+json'
+          }
         });
+
+        if (getFile.status === 401) {
+          statusMsg.innerText = 'Ошибка 401: Неверный токен или истёк срок его действия!';
+          return;
+        }
+
         const fileData = await getFile.json();
         const sha = fileData.sha;
 
+        // 2. Пуш данных
         const contentEncoded = btoa(unescape(encodeURIComponent(JSON.stringify(updatedData, null, 2))));
         const updateRes = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/data.json`, {
           method: 'PUT',
           headers: {
-            'Authorization': `token ${token}`,
-            'Content-Type': 'application/json'
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/vnd.github+json'
           },
           body: JSON.stringify({
             message: 'Обновление данных через админ-панель',
@@ -150,9 +183,10 @@
         });
 
         if (updateRes.ok) {
-          statusMsg.innerText = 'Успешно сохранено на GitHub! Страница обновится через минуту.';
+          statusMsg.innerText = 'Успешно сохранено на GitHub! Изменения применятся в течение минуты.';
         } else {
-          statusMsg.innerText = 'Ошибка сохранения. Проверьте токен и права!';
+          const errData = await updateRes.json();
+          statusMsg.innerText = `Ошибка сохранения (${updateRes.status}): ${errData.message || 'Проверьте права токена!'}`;
         }
       } catch (err) {
         console.error(err);
@@ -162,12 +196,15 @@
 
     function logout() {
       sessionStorage.removeItem('isAdmin');
+      sessionStorage.removeItem('gh_token');
       location.reload();
     }
 
     if (sessionStorage.getItem('isAdmin') === 'true') {
       document.getElementById('login-box').style.display = 'none';
       document.getElementById('admin-panel').style.display = 'block';
+      const savedToken = sessionStorage.getItem('gh_token');
+      if (savedToken) document.getElementById('gh-token').value = savedToken;
       loadCurrentData();
     }
   </script>
