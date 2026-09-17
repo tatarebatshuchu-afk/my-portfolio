@@ -12,6 +12,8 @@
     input, textarea { width: 100%; padding: 10px; margin: 6px 0 12px 0; border-radius: 6px; border: 1px solid #475569; background: #0f172a; color: #fff; font-size: 14px; }
     button { width: 100%; padding: 12px; background: #0284c7; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; color: #fff; margin-top: 10px; }
     button:hover { background: #0369a1; }
+    .btn-save-local { background: #8b5cf6; }
+    .btn-save-local:hover { background: #7c3aed; }
     .btn-logout { background: #ef4444; margin-top: 20px; }
     .btn-logout:hover { background: #dc2626; }
     .btn-add { background: #10b981; padding: 8px; font-size: 12px; }
@@ -37,8 +39,8 @@
   <div class="card" id="admin-panel">
     <h2>Редактирование сайта ⚡</h2>
     
-    <label>GitHub Токен (для сохранения):</label>
-    <input type="password" id="gh-token" placeholder="github_pat_xxxxxxxxxxxx">
+    <label>GitHub Токен:</label>
+    <input type="password" id="gh-token" placeholder="github_pat_xxxxxxxxxxxx" oninput="saveTokenToLocal()">
 
     <label>Текст «О себе»:</label>
     <textarea id="edit-about" rows="3"></textarea>
@@ -50,13 +52,13 @@
     <div id="projects-container"></div>
     <button type="button" class="btn-add" onclick="addProjectRow()">+ Добавить проект</button>
 
-    <button onclick="saveToGitHub()">Сохранить изменения на GitHub</button>
+    <button class="btn-save-local" onclick="saveToLocalStorage()">💾 Сохранить локально (LocalStorage)</button>
+    <button onclick="saveToGitHub()">☁️ Отправить на GitHub</button>
     <button class="btn-logout" onclick="logout()">Выйти</button>
     <div id="status-msg" class="error" style="color:#38bdf8;"></div>
   </div>
 
   <script>
-    let repoSHA = '';
     const REPO_OWNER = 'tatarebatshuchu-afk';
     const REPO_NAME = 'my-portfolio';
 
@@ -79,11 +81,6 @@
           document.getElementById('login-box').style.display = 'none';
           document.getElementById('admin-panel').style.display = 'block';
           sessionStorage.setItem('isAdmin', 'true');
-          
-          // Восстанавливаем токен из памяти сессии, если он сохранялся
-          const savedToken = sessionStorage.getItem('gh_token');
-          if (savedToken) document.getElementById('gh-token').value = savedToken;
-          
           loadCurrentData();
         } else {
           document.getElementById('error-msg').style.display = 'block';
@@ -93,48 +90,14 @@
       }
     }
 
-    async function loadCurrentData() {
-      try {
-        const res = await fetch('../data.json?t=' + Date.now());
-        const data = await res.json();
-
-        document.getElementById('edit-about').value = data.aboutText || '';
-        document.getElementById('edit-interests').value = (data.interests || []).join(', ');
-
-        const container = document.getElementById('projects-container');
-        container.innerHTML = '';
-        if (data.projects) {
-          data.projects.forEach(p => addProjectRow(p.name, p.url));
-        }
-      } catch (err) {
-        console.error('Ошибка загрузки data.json', err);
-      }
-    }
-
-    function addProjectRow(name = '', url = '') {
-      const container = document.getElementById('projects-container');
-      const div = document.createElement('div');
-      div.className = 'project-row';
-      div.innerHTML = `
-        <input type="text" placeholder="Название" value="${name}" class="p-name">
-        <input type="text" placeholder="Ссылка (https://...)" value="${url}" class="p-url">
-      `;
-      container.appendChild(div);
-    }
-
-    async function saveToGitHub() {
+    function saveTokenToLocal() {
       const token = document.getElementById('gh-token').value.trim();
-      const statusMsg = document.getElementById('status-msg');
-
-      if (!token) {
-        alert('Введите GitHub Token!');
-        return;
+      if (token) {
+        localStorage.setItem('gh_token', token);
       }
+    }
 
-      sessionStorage.setItem('gh_token', token);
-      statusMsg.style.display = 'block';
-      statusMsg.innerText = 'Сохранение...';
-
+    function collectFormData() {
       const updatedData = {
         aboutText: document.getElementById('edit-about').value,
         interests: document.getElementById('edit-interests').value.split(',').map(s => s.trim()).filter(Boolean),
@@ -149,8 +112,84 @@
         }
       });
 
+      return updatedData;
+    }
+
+    async function loadCurrentData() {
+      // Подтягиваем токен из LocalStorage
+      const savedToken = localStorage.getItem('gh_token');
+      if (savedToken) {
+        document.getElementById('gh-token').value = savedToken;
+      }
+
+      // Проверяем сохраненный контент в LocalStorage
+      const localData = localStorage.getItem('site_data');
+      if (localData) {
+        renderData(JSON.parse(localData));
+        return;
+      }
+
+      // Если в LocalStorage пусто, подтягиваем из data.json
       try {
-        // 1. Запрос SHA файла с заголовком Bearer
+        const res = await fetch('../data.json?t=' + Date.now());
+        const data = await res.json();
+        renderData(data);
+      } catch (err) {
+        console.error('Ошибка загрузки data.json', err);
+      }
+    }
+
+    function renderData(data) {
+      document.getElementById('edit-about').value = data.aboutText || '';
+      document.getElementById('edit-interests').value = (data.interests || []).join(', ');
+
+      const container = document.getElementById('projects-container');
+      container.innerHTML = '';
+      if (data.projects) {
+        data.projects.forEach(p => addProjectRow(p.name, p.url));
+      }
+    }
+
+    function addProjectRow(name = '', url = '') {
+      const container = document.getElementById('projects-container');
+      const div = document.createElement('div');
+      div.className = 'project-row';
+      div.innerHTML = `
+        <input type="text" placeholder="Название" value="${name}" class="p-name">
+        <input type="text" placeholder="Ссылка (https://...)" value="${url}" class="p-url">
+      `;
+      container.appendChild(div);
+    }
+
+    function saveToLocalStorage() {
+      const data = collectFormData();
+      saveTokenToLocal();
+
+      localStorage.setItem('site_data', JSON.stringify(data));
+
+      const statusMsg = document.getElementById('status-msg');
+      statusMsg.style.display = 'block';
+      statusMsg.innerText = '✅ Данные и токен сохранены в LocalStorage!';
+    }
+
+    async function saveToGitHub() {
+      saveTokenToLocal();
+      const token = document.getElementById('gh-token').value.trim() || localStorage.getItem('gh_token');
+      const statusMsg = document.getElementById('status-msg');
+
+      if (!token) {
+        alert('Введите GitHub Token!');
+        return;
+      }
+
+      saveToLocalStorage();
+
+      statusMsg.style.display = 'block';
+      statusMsg.innerText = 'Сохранение на GitHub...';
+
+      const updatedData = collectFormData();
+
+      try {
         const getFile = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/data.json`, {
           headers: { 
             'Authorization': `Bearer ${token}`,
@@ -159,14 +198,13 @@
         });
 
         if (getFile.status === 401) {
-          statusMsg.innerText = 'Ошибка 401: Неверный токен или истёк срок его действия!';
+          statusMsg.innerText = 'Ошибка 401: Неверный токен!';
           return;
         }
 
         const fileData = await getFile.json();
         const sha = fileData.sha;
 
-        // 2. Пуш данных
         const contentEncoded = btoa(unescape(encodeURIComponent(JSON.stringify(updatedData, null, 2))));
         const updateRes = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/data.json`, {
           method: 'PUT',
@@ -183,10 +221,10 @@
         });
 
         if (updateRes.ok) {
-          statusMsg.innerText = 'Успешно сохранено на GitHub! Изменения применятся в течение минуты.';
+          statusMsg.innerText = '🚀 Успешно сохранено на GitHub!';
         } else {
           const errData = await updateRes.json();
-          statusMsg.innerText = `Ошибка сохранения (${updateRes.status}): ${errData.message || 'Проверьте права токена!'}`;
+          statusMsg.innerText = `Ошибка (${updateRes.status}): ${errData.message || 'Проверьте права токена!'}`;
         }
       } catch (err) {
         console.error(err);
@@ -196,15 +234,12 @@
 
     function logout() {
       sessionStorage.removeItem('isAdmin');
-      sessionStorage.removeItem('gh_token');
       location.reload();
     }
 
     if (sessionStorage.getItem('isAdmin') === 'true') {
       document.getElementById('login-box').style.display = 'none';
       document.getElementById('admin-panel').style.display = 'block';
-      const savedToken = sessionStorage.getItem('gh_token');
-      if (savedToken) document.getElementById('gh-token').value = savedToken;
       loadCurrentData();
     }
   </script>
