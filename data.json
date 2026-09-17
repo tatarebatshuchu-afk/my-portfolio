@@ -1,0 +1,10 @@
+{
+  "aboutText": "Привет! Я разработчик. Создаю веб-сервисы, скрипты на Python и работаю с Linux.",
+  "interests": ["Python & Flask", "JavaScript & Web", "Linux & SysAdmin", "Roblox & Luau"],
+  "projects": [
+    {
+      "name": "Мой первый проект",
+      "url": "https://github.com"
+    }
+  ]
+}
